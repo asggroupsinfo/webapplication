@@ -1,5 +1,6 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import logging
 import asyncio
@@ -11,7 +12,7 @@ from app.core.database import Base, engine
 from app.services.mt5_bridge import MT5Bridge
 from app.services.websocket_manager import manager
 from app.services.alert_engine import alert_engine
-from app.api import auth, users, alerts, charts
+from app.api import auth, users, alerts, charts, dashboard
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -60,6 +61,15 @@ app = FastAPI(
 # Add rate limiter
 app.state.limiter = limiter
 
+# Global exception handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error. Please try again later."}
+    )
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -74,21 +84,54 @@ app.include_router(auth.router, prefix=f"{settings.API_V1_STR}/auth", tags=["Aut
 app.include_router(users.router, prefix=f"{settings.API_V1_STR}/users", tags=["Users"])
 app.include_router(alerts.router, prefix=f"{settings.API_V1_STR}/alerts", tags=["Alerts"])
 app.include_router(charts.router, prefix=f"{settings.API_V1_STR}/charts", tags=["Charts"])
+app.include_router(dashboard.router, prefix=f"{settings.API_V1_STR}/dashboard", tags=["Dashboard"])
 
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time data"""
     import uuid
+    import json
     client_id = str(uuid.uuid4())
     await manager.connect(websocket, client_id)
+    
+    # Send initial MT5 status
+    mt5_status = "connected" if MT5Bridge.is_connected() else "disconnected"
+    await manager.send_personal_message(
+        json.dumps({"type": "mt5_status", "status": mt5_status}),
+        client_id
+    )
     
     try:
         while True:
             data = await websocket.receive_text()
-            # Handle incoming messages from client
-            # For now, just echo back or handle specific commands
-            await manager.send_personal_message(f"Echo: {data}", client_id)
+            try:
+                # Parse JSON message
+                message = json.loads(data)
+                message_type = message.get("type")
+                
+                # Handle different message types
+                if message_type == "subscribe":
+                    # Subscribe to specific data stream
+                    symbol = message.get("symbol")
+                    if symbol:
+                        # Subscribe to price updates for this symbol
+                        pass
+                elif message_type == "unsubscribe":
+                    # Unsubscribe from data stream
+                    pass
+                else:
+                    # Echo back for debugging
+                    await manager.send_personal_message(
+                        json.dumps({"type": "echo", "data": message}),
+                        client_id
+                    )
+            except json.JSONDecodeError:
+                # Handle plain text messages
+                await manager.send_personal_message(
+                    json.dumps({"type": "echo", "data": data}),
+                    client_id
+                )
     except WebSocketDisconnect:
         manager.disconnect(client_id)
         logger.info(f"WebSocket client {client_id} disconnected")

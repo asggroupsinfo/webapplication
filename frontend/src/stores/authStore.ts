@@ -44,10 +44,18 @@ export const useAuthStore = create<AuthState>()(
 
       fetchCurrentUser: async () => {
         try {
+          const token = localStorage.getItem('access_token');
+          if (!token) {
+            set({ user: null, isAuthenticated: false });
+            return;
+          }
           const user = await userAPI.getCurrentUser();
-          set({ user, isAuthenticated: true });
+          set({ user, isAuthenticated: true, token });
         } catch (error) {
-          set({ user: null, isAuthenticated: false });
+          console.error('Failed to fetch current user:', error);
+          localStorage.removeItem('access_token');
+          set({ user: null, isAuthenticated: false, token: null });
+          throw error;
         }
       },
     }),

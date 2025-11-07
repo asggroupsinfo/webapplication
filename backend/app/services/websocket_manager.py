@@ -70,14 +70,17 @@ class ConnectionManager:
         if not self.redis_pubsub:
             return
         
-        try:
-            message = self.redis_pubsub.get_message(timeout=0.1)
-            if message and message['type'] == 'message':
-                data = message['data']
-                # Broadcast to all connected WebSocket clients
-                await self.broadcast(data)
-        except Exception as e:
-            logger.error(f"Error handling Redis message: {e}")
+        while True:
+            try:
+                message = self.redis_pubsub.get_message(timeout=0.1)
+                if message and message['type'] == 'message':
+                    data = message['data']
+                    # Broadcast to all connected WebSocket clients
+                    await self.broadcast(data)
+                await asyncio.sleep(0.1)  # Small delay to prevent busy loop
+            except Exception as e:
+                logger.error(f"Error handling Redis message: {e}")
+                await asyncio.sleep(1)  # Wait before retrying
     
     def publish_to_redis(self, channel: str, data: dict):
         """Publish data to Redis channel"""

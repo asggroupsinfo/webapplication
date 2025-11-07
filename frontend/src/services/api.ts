@@ -1,7 +1,8 @@
 import axios from 'axios';
-import type { LoginCredentials, Token, User, UserCreate, UserUpdate, Alert, AlertCreate, AlertUpdate, Symbol, CandleData } from '../types';
+import type { LoginCredentials, Token, User, UserCreate, UserUpdate, Alert, AlertCreate, AlertUpdate, CandleData } from '../types';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+// Use proxy in development, direct URL in production
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -28,10 +29,20 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Log network errors
+    if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
+      console.error('Network Error: Backend server might be down or CORS issue');
+      console.error('Error details:', error);
+      // Don't reject immediately, let the component handle it
+    }
+    
     if (error.response?.status === 401) {
       // Unauthorized - clear token and redirect to login
       localStorage.removeItem('access_token');
-      window.location.href = '/login';
+      // Only redirect if not already on login page
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }
@@ -97,6 +108,14 @@ export const chartsAPI = {
     const response = await api.get(`/charts/history/${symbol}`, {
       params: { timeframe, count },
     });
+    return response.data;
+  },
+};
+
+// Dashboard API
+export const dashboardAPI = {
+  getStats: async (): Promise<{ mt5_status: string; active_alerts: number; total_alerts: number; strategies: number }> => {
+    const response = await api.get('/dashboard/stats');
     return response.data;
   },
 };

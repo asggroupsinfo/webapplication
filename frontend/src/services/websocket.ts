@@ -1,58 +1,96 @@
-import { io, Socket } from 'socket.io-client';
-import type { PriceData, MT5ConnectionStatus } from '../types';
+// WebSocket service for real-time communication
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:8000';
+const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
 
 class WebSocketService {
-  private socket: Socket | null = null;
+  private socket: WebSocket | null = null;
   private listeners: Map<string, Set<Function>> = new Map();
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 5;
+  private reconnectDelay = 1000;
 
   connect(): void {
-    if (this.socket?.connected) {
+    if (this.socket?.readyState === WebSocket.OPEN) {
       return;
     }
 
-    this.socket = io(WS_URL, {
-      transports: ['websocket'],
-      reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionAttempts: 5,
-    });
+    try {
+      // Handle different URL formats
+      let wsUrl: string;
+      if (WS_URL.startsWith('ws://') || WS_URL.startsWith('wss://')) {
+        wsUrl = WS_URL + '/ws';
+      } else if (WS_URL.startsWith('http://')) {
+        wsUrl = WS_URL.replace('http://', 'ws://') + '/ws';
+      } else if (WS_URL.startsWith('https://')) {
+        wsUrl = WS_URL.replace('https://', 'wss://') + '/ws';
+      } else {
+        // Default to ws://localhost:8000/ws
+        wsUrl = 'ws://localhost:8000/ws';
+      }
+      this.socket = new WebSocket(wsUrl);
 
-    this.socket.on('connect', () => {
-      console.log('WebSocket connected');
-      this.emit('connected');
-    });
+      this.socket.onopen = () => {
+        console.log('WebSocket connected');
+        this.reconnectAttempts = 0;
+        this.emit('connected');
+      };
 
-    this.socket.on('disconnect', () => {
-      console.log('WebSocket disconnected');
-      this.emit('disconnected');
-    });
+      this.socket.onclose = () => {
+        console.log('WebSocket disconnected');
+        this.emit('disconnected');
+        this.attemptReconnect();
+      };
 
-    this.socket.on('error', (error) => {
-      console.error('WebSocket error:', error);
-      this.emit('error', error);
-    });
+      this.socket.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        this.emit('error', error);
+      };
 
-    // Listen for MT5 data
-    this.socket.on('mt5_data', (data: any) => {
-      this.emit('mt5_data', data);
-    });
+      this.socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          // Handle different message types
+          if (data.type) {
+            this.emit(data.type, data.payload || data);
+          } else {
+            // Handle plain JSON messages
+            if (data.status) {
+              this.emit('mt5_status', data.status);
+            } else if (data.price) {
+              this.emit('price_update', data);
+            } else {
+              this.emit('mt5_data', data);
+            }
+          }
+        } catch (e) {
+          // Handle text messages
+          if (event.data.includes('mt5_status')) {
+            const status = event.data.replace('mt5_status:', '').trim();
+            this.emit('mt5_status', status);
+          } else {
+            this.emit('message', event.data);
+          }
+        }
+      };
+    } catch (error) {
+      console.error('Failed to create WebSocket:', error);
+      this.attemptReconnect();
+    }
+  }
 
-    // Listen for price updates
-    this.socket.on('price_update', (data: PriceData) => {
-      this.emit('price_update', data);
-    });
-
-    // Listen for MT5 connection status
-    this.socket.on('mt5_status', (status: MT5ConnectionStatus) => {
-      this.emit('mt5_status', status);
-    });
+  private attemptReconnect(): void {
+    if (this.reconnectAttempts < this.maxReconnectAttempts) {
+      this.reconnectAttempts++;
+      setTimeout(() => {
+        console.log(`Reconnecting... (attempt ${this.reconnectAttempts})`);
+        this.connect();
+      }, this.reconnectDelay * this.reconnectAttempts);
+    }
   }
 
   disconnect(): void {
     if (this.socket) {
-      this.socket.disconnect();
+      this.socket.close();
       this.socket = null;
     }
   }
@@ -79,13 +117,13 @@ class WebSocketService {
   }
 
   send(event: string, data: any): void {
-    if (this.socket?.connected) {
-      this.socket.emit(event, data);
+    if (this.socket?.readyState === WebSocket.OPEN) {
+      this.socket.send(JSON.stringify({ type: event, payload: data }));
     }
   }
 
   isConnected(): boolean {
-    return this.socket?.connected || false;
+    return this.socket?.readyState === WebSocket.OPEN || false;
   }
 }
 

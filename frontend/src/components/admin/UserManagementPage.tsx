@@ -112,7 +112,22 @@ export default function UserManagementPage() {
       )}
 
       {isLoading ? (
-        <div className="text-center text-gray-400 py-8">Loading...</div>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-premium-orange mx-auto mb-4"></div>
+            <p className="text-gray-400">Loading users...</p>
+          </div>
+        </div>
+      ) : users.length === 0 ? (
+        <div className="bg-charcoal rounded-lg border border-gray-700 p-12 text-center">
+          <p className="text-gray-400 mb-4">No users found</p>
+          <button
+            onClick={handleCreate}
+            className="bg-premium-orange text-pitch-black px-4 py-2 rounded-md hover:bg-golden-glow transition-colors"
+          >
+            Create First User
+          </button>
+        </div>
       ) : (
         <div className="bg-charcoal rounded-lg overflow-hidden border border-gray-700">
           <table className="w-full">
@@ -144,14 +159,14 @@ export default function UserManagementPage() {
                     <div className="flex gap-2">
                       <button
                         onClick={() => handleEdit(user)}
-                        className="text-premium-orange hover:text-golden-glow"
+                        className="text-premium-orange hover:text-golden-glow transition-colors"
                       >
                         Edit
                       </button>
                       {user.id !== currentUser?.id && (
                         <button
                           onClick={() => handleDelete(user.id)}
-                          className="text-bearish-red hover:text-red-400"
+                          className="text-bearish-red hover:text-red-400 transition-colors"
                         >
                           Delete
                         </button>

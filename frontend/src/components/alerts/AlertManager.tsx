@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { alertAPI } from '../../services/api';
+import { wsService } from '../../services/websocket';
 import type { Alert, AlertCreate } from '../../types';
 
 export default function AlertManager() {
@@ -18,6 +19,28 @@ export default function AlertManager() {
 
   useEffect(() => {
     fetchAlerts();
+
+    // Listen for real-time alert updates via WebSocket
+    const handleAlertUpdate = (data: any) => {
+      if (data.type === 'alert_created' || data.type === 'alert_updated') {
+        fetchAlerts();
+      } else if (data.type === 'alert_deleted') {
+        setAlerts((prev) => prev.filter((a) => a.id !== data.alert_id));
+      } else if (data.type === 'alert_triggered') {
+        // Update alert last_triggered time
+        setAlerts((prev) =>
+          prev.map((a) =>
+            a.id === data.alert_id ? { ...a, last_triggered: data.timestamp } : a
+          )
+        );
+      }
+    };
+
+    wsService.on('alert_update', handleAlertUpdate);
+
+    return () => {
+      wsService.off('alert_update', handleAlertUpdate);
+    };
   }, []);
 
   const fetchAlerts = async () => {
@@ -98,7 +121,22 @@ export default function AlertManager() {
       )}
 
       {isLoading ? (
-        <div className="text-center text-gray-400 py-8">Loading...</div>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-premium-orange mx-auto mb-4"></div>
+            <p className="text-gray-400">Loading alerts...</p>
+          </div>
+        </div>
+      ) : alerts.length === 0 ? (
+        <div className="bg-charcoal rounded-lg border border-gray-700 p-12 text-center">
+          <p className="text-gray-400 mb-4">No alerts created yet</p>
+          <button
+            onClick={() => setShowModal(true)}
+            className="bg-premium-orange text-pitch-black px-4 py-2 rounded-md hover:bg-golden-glow transition-colors"
+          >
+            Create Your First Alert
+          </button>
+        </div>
       ) : (
         <div className="bg-charcoal rounded-lg overflow-hidden border border-gray-700">
           <table className="w-full">
@@ -118,7 +156,9 @@ export default function AlertManager() {
                   <td className="px-4 py-3 text-sm text-gray-300">{alert.symbol}</td>
                   <td className="px-4 py-3 text-sm text-gray-300">{alert.condition_type}</td>
                   <td className="px-4 py-3 text-sm text-gray-300">{alert.timeframe}</td>
-                  <td className="px-4 py-3 text-sm text-gray-300 max-w-xs truncate">{alert.webhook_url}</td>
+                  <td className="px-4 py-3 text-sm text-gray-300 max-w-xs truncate" title={alert.webhook_url}>
+                    {alert.webhook_url}
+                  </td>
                   <td className="px-4 py-3 text-sm">
                     <button
                       onClick={() => handleToggle(alert)}
@@ -134,7 +174,7 @@ export default function AlertManager() {
                   <td className="px-4 py-3 text-sm">
                     <button
                       onClick={() => handleDelete(alert.id)}
-                      className="text-bearish-red hover:text-red-400"
+                      className="text-bearish-red hover:text-red-400 transition-colors"
                     >
                       Delete
                     </button>
@@ -176,6 +216,36 @@ export default function AlertManager() {
                   <option value="PINE_CONDITION">Pine Script Condition</option>
                 </select>
               </div>
+
+              {(formData.condition_type === 'PRICE_ABOVE' || formData.condition_type === 'PRICE_BELOW') && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Condition Value (Price)</label>
+                  <input
+                    type="number"
+                    step="0.00001"
+                    value={formData.condition_value || ''}
+                    onChange={(e) => setFormData({ ...formData, condition_value: parseFloat(e.target.value) || undefined })}
+                    required
+                    className="w-full px-4 py-2 bg-deep-space border border-gray-700 rounded-md text-white"
+                    placeholder="1.08500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Enter the price threshold for the alert</p>
+                </div>
+              )}
+
+              {formData.condition_type === 'PINE_CONDITION' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Pine Script Condition Code</label>
+                  <textarea
+                    value={formData.condition_code || ''}
+                    onChange={(e) => setFormData({ ...formData, condition_code: e.target.value })}
+                    className="w-full px-4 py-2 bg-deep-space border border-gray-700 rounded-md text-white"
+                    rows={4}
+                    placeholder="// Pine Script condition code here"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Enter Pine Script condition code</p>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Timeframe</label>

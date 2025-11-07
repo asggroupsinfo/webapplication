@@ -12,7 +12,7 @@ passlib[bcrypt]==1.7.4
 pydantic==2.5.0
 pydantic-settings==2.1.0
 python-dotenv==1.0.0
-MetaTrader5==5.0.45
+MetaTrader5==5.0.5388
 requests==2.31.0
 slowapi==0.1.9
 websockets==12.0

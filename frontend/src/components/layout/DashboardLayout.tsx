@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
 import { wsService } from '../../services/websocket';
@@ -8,33 +8,58 @@ export default function DashboardLayout() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const [isInitializing, setIsInitializing] = useState(true);
+
   useEffect(() => {
-    if (!isAuthenticated) {
+    const initializeAuth = async () => {
       const token = localStorage.getItem('access_token');
-      if (token) {
-        fetchCurrentUser();
-      } else {
+      if (token && !isAuthenticated) {
+        try {
+          await fetchCurrentUser();
+        } catch (error) {
+          console.error('Failed to fetch user:', error);
+          navigate('/login');
+        }
+      } else if (!token) {
         navigate('/login');
       }
-    }
+      setIsInitializing(false);
+    };
+
+    initializeAuth();
   }, [isAuthenticated, navigate, fetchCurrentUser]);
 
   useEffect(() => {
     // Connect WebSocket when authenticated
-    if (isAuthenticated) {
+    if (isAuthenticated && user) {
       wsService.connect();
     }
 
     return () => {
-      wsService.disconnect();
+      if (isAuthenticated) {
+        wsService.disconnect();
+      }
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, user]);
 
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
 
+  // Show loading state while initializing
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen bg-pitch-black text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-premium-orange mx-auto mb-4"></div>
+          <p className="text-gray-400">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Redirect to login if not authenticated
   if (!isAuthenticated || !user) {
     return null;
   }

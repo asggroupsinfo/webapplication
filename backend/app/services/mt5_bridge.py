@@ -2,6 +2,7 @@ import MetaTrader5 as mt5
 import time
 import asyncio
 import logging
+import json
 from typing import List, Dict, Optional
 from datetime import datetime
 from app.core.config import settings
@@ -74,6 +75,10 @@ class MT5Bridge:
                 self._connection_attempts = 0
                 logger.info("MT5 connected successfully")
                 
+                # Broadcast connection status
+                from app.services.websocket_manager import manager
+                asyncio.create_task(manager.broadcast(json.dumps({"type": "mt5_status", "status": "connected"})))
+                
                 # Start heartbeat task
                 asyncio.create_task(self._heartbeat_loop())
                 
@@ -89,6 +94,8 @@ class MT5Bridge:
     
     async def _heartbeat_loop(self):
         """Heartbeat mechanism to check connection every 5-10 seconds"""
+        from app.services.websocket_manager import manager
+        
         while self._connected:
             try:
                 await asyncio.sleep(5)  # Check every 5 seconds
@@ -97,10 +104,14 @@ class MT5Bridge:
                 if terminal_info is None:
                     logger.warning("MT5 heartbeat failed - connection lost")
                     self._connected = False
+                    # Broadcast status update
+                    await manager.broadcast(json.dumps({"type": "mt5_status", "status": "disconnected"}))
                     # Attempt reconnection
                     await self.connect()
                 else:
                     logger.debug("MT5 heartbeat OK")
+                    # Broadcast status update
+                    await manager.broadcast(json.dumps({"type": "mt5_status", "status": "connected"}))
                     
             except Exception as e:
                 logger.error(f"Heartbeat error: {e}")

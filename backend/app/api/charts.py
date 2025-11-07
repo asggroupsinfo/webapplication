@@ -32,7 +32,26 @@ async def get_historical_data(
     """Get historical candle data for a symbol"""
     try:
         data = MT5Bridge.get_historical_data(symbol, timeframe, count)
-        return {"symbol": symbol, "timeframe": timeframe, "data": data}
+        # Convert to TradingView format
+        formatted_data = []
+        for candle in data:
+            # Convert ISO time to Unix timestamp
+            time_str = candle['time']
+            if time_str.endswith('Z'):
+                time_str = time_str.replace('Z', '+00:00')
+            time_obj = datetime.fromisoformat(time_str)
+            timestamp = int(time_obj.timestamp())
+            
+            formatted_data.append({
+                "time": timestamp * 1000,  # TradingView expects milliseconds
+                "open": float(candle['open']),
+                "high": float(candle['high']),
+                "low": float(candle['low']),
+                "close": float(candle['close']),
+                "volume": int(candle['volume']),
+            })
+        
+        return {"symbol": symbol, "timeframe": timeframe, "data": formatted_data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching historical data: {str(e)}")
 

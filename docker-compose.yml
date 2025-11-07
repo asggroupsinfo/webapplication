@@ -21,16 +21,16 @@ services:
   frontend:
     build: ./frontend
     ports:
-      - "3000:3000"
+      - "5173:5173"
     environment:
-      - VITE_API_BASE_URL=http://localhost:8000/api/v1
-      - VITE_WS_URL=http://localhost:8000
+      - VITE_API_URL=/api/v1
+      - VITE_WS_URL=ws://localhost:8000
     depends_on:
       - backend
     volumes:
       - ./frontend:/app
       - /app/node_modules
-    command: npm run dev
+    command: npm run dev -- --host 0.0.0.0 --port 5173
 
   redis:
     image: redis:7-alpine
